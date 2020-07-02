@@ -53,20 +53,20 @@
       integer,dimension(NELEM,NDUST) :: dustkind,stoich
       integer :: it,i,j,m,el,el2,Nact,Nact_read,Neq,slots,sl,dk,eq
       integer :: itry,knowns,unknowns,unknown,ii,jj,lastit,laston=0
-      integer :: imaxon,iminoff,info,ipvt(NELEM)
+      integer :: dtry,dtry_last=0,imaxon,iminoff,info,ipvt(NELEM)
       integer :: e_num(NELEM),e_num_save(NELEM)
       integer :: Nunsolved,unsolved(NELEM),Nvar1,Nvar2,var(NELEM)
       integer :: Nsolve,ebest,dbest,nonzero,itrivial,iread,ioff,method
-      integer :: ifail,Nall,imax,swap,irow,erow,Eact,Nlin,iback
+      integer :: ifail,Nall,imax,swap,irow,erow,Eact,Nlin,iback,e1,e2
       integer :: act_to_elem(NELEM),act_to_dust(NELEM)
       integer :: Nzero,Ntrivial,etrivial(NELEM),dtrivial(NELEM)
       logical,dimension(NELEM) :: e_resolved,e_act,e_taken,is_esolved
-      logical,dimension(NELEM) :: e_eliminated
+      logical,dimension(NELEM) :: e_eliminated,eblocked
       logical,dimension(0:NDUST) :: active,act_read,act_old
       logical,dimension(NDUST) :: is_dsolved,d_resolved,d_eliminated
       logical,dimension(NDUST) :: itried
       logical :: action,changed,solved,limited,ok,found,all_two
-      logical :: limdust
+      logical :: limdust,dtry_break
       character(len=1) :: char1,txt0
       character(len=2) :: rem,tnum
       character(len=6) :: dum6
@@ -219,6 +219,14 @@
         firstCall = .false. 
       endif
 
+      !open(unit=1,file='Last_abund.in',status='replace')
+      !do i=1,NEPS
+      !  el = elnr(i)
+      !  write(1,'(A2,2x,0pF25.20)') elnam(el),12.0+LOG10(eps0(el))
+      !enddo
+      !write(1,*) nHtot,T
+      !close(1)
+
       if (verbose>=0) then
         write(*,*)
         write(*,'("EQUIL_COND started")')
@@ -330,7 +338,7 @@
       ifail = 0
       
       do it=1,itmax
-        
+
         !---------------------------------------
         ! ***  selection of solids to solve  ***
         !---------------------------------------
@@ -637,16 +645,36 @@
         if (Nind-1<Nact) stop "*** Nind<Nact in equil_cond."
         Nall = Nind-1
         Nind = Nact                         ! truncate at number of condensates
-        if (verbose>1) print'(99(A3))',
-     >                    (trim(elnam(Iindex(j))),j=1,Nall)
+        if (verbose>1) print'(99(A3))',(elnam(Iindex(j)),j=1,Nall)
         if (verbose>1) print'(99(I3))',e_num(Iindex(1:Nall)) 
 
         !-----------------------------------------------
         ! ***  check and correct choice of elements  ***
         !-----------------------------------------------
+        eblocked(:) = .false.
+        do dk=1,NDUST
+          if (.not.active(dk)) cycle
+          e1 = 0
+          e2 = 0
+          do j=1,dust_nel(dk)
+            el=dust_el(dk,j)
+            if (e_num(el)==1) then
+              e2 = e1
+              e1 = el
+            endif
+          enddo
+          if (e1>0.and.e2>0) then
+            eblocked(e1) = .true.
+            eblocked(e2) = .true.
+            if (verbose>1) then
+              print*,"*** blocked ",dust_nam(dk),elnam(e1),elnam(e2)
+            endif  
+          endif  
+        enddo  
+        e_num_save(:) = e_num(:)
+        dtry = 0
+ 200    continue
         if (Nact<Nall) then
-          e_num_save(:) = e_num(:)
- 200      continue
           e_num(:) = e_num_save
           e_eliminated(:) = .false.
           d_eliminated(:) = .false.
@@ -663,7 +691,7 @@
               do i=1,Nall
                 el = Iindex(i)
                 if (.not.e_eliminated(el)) then
-                  txt1 = trim(txt1)//" "//trim(elnam(el))
+                  txt1 = trim(txt1)//" "//elnam(el)
                   write(tnum,'(I2)') e_num(el) 
                   txt2 = trim(txt2)//" "//tnum
                 endif  
@@ -740,7 +768,9 @@
           endif 
           !--- is there an unselected element with e_num=1?
           found = .false.
-          if (Nall>Nact+1) then
+          !print*,"Nall,Nact=",Nall,Nact
+          !if (Nall>Nact+1) then
+          if (Nall>Nact) then
             do i=Nact+1,Nall
               el = Iindex(i)
               if (e_num(el)==1) then
@@ -769,9 +799,11 @@
             enddo
             deplete1 = eps(Iindex(i))**2/eps0(Iindex(i))
             deplete2 = eps(Iindex(j))**2/eps0(Iindex(j))
-            !print*,elnam(Iindex(i)),elnam(Iindex(j))
-            !print*,deplete1,deplete2
-            if (deplete1>1.Q+2*deplete2) found=.false.
+            if (verbose>1) then
+              print*,"deplete",elnam(Iindex(i)),elnam(Iindex(j))
+              print*,deplete1,deplete2
+            endif  
+            if (dtry==0.and.deplete1>1.Q+2*deplete2) found=.false.
             if (found) then
               if (verbose>=0) then
                 print*,"... exchanging2 "//elnam(Iindex(j))//
@@ -836,9 +868,15 @@
           endif  
         endif   
 
-        if (verbose>1) print*,"solving for ... ",
-     >                      (elnam(Iindex(i))//" ",i=1,Nind)
-        if (verbose>1) print'(99(1pE11.3))',(Iabund(i),i=1,Nind)
+ 210    continue
+        dtry_break = .false.
+        if (verbose>1) then
+          print*,"dependent elements ... ",
+     >         (elnam(Iindex(i))//" ",i=Nind+1,Nall)
+          print*,"solving for ... ",
+     >         (elnam(Iindex(i))//" ",i=1,Nind)
+          print'(99(1pE11.3))',(Iabund(i),i=1,Nind)
+        endif
 
         !------------------------------------------------
         ! ***  determine dependent dust and elements  ***
@@ -988,6 +1026,9 @@
      >                 elnam(var(Nvar1+1:Nvar1+Nvar2))
             if (Nunsolved/=Nvar1+Nvar2) then
               print*,"... is impossible"
+              dtry = dtry+1
+              dtry_break = .true.
+              if (dtry<5) exit
               stop
             endif  
             if (Nunsolved==Nvar1+Nvar2) then
@@ -1023,11 +1064,14 @@
               call QGEDI ( DF, NELEM, Nunsolved, ipvt, det, work, 1 )
               if (info.ne.0) then
                 print*,"*** singular matrix in QGEFA: info=",info
+                dtry = dtry+1
+                dtry_break = .true.
+                if (dtry<5) exit
+                do i=1,Nunsolved
+                  print'(99(1pE12.3))',(DFsav(i,j),j=1,Nunsolved)
+                enddo
                 stop
               endif   
-              !do i=1,Nunsolved
-              !  print'(99(1pE12.3))',(DF(i,j),j=1,Nunsolved)
-              !enddo
               do i=1,Nvar1
                 dk = var(i)
                 vec(:) = 0.Q0
@@ -1058,11 +1102,34 @@
      >                            //elnam(el2),REAL(emat(el,el2))
                 enddo  
               enddo  
-            endif  
+            endif
+            if (dtry>0.and.dtry_break) exit
           endif    
           if (itry==100) stop "*** itry==100"
         enddo
         if (.not.solved) then
+          if (dtry==1) goto 200   ! may work by relaxing the depletion-criterium
+          i = Nind
+          dtry_last = dtry_last+1
+          do j=Nind+dtry_last,Nall
+            if (.not.eblocked(Iindex(j))) exit
+          enddo
+          !print*,i,j,Nind,Nall
+          !print*,elnam(Iindex(i))
+          !print*,elnam(Iindex(j))
+          if (j<=Nall) then
+            if (verbose>1) then
+              print*,"... dtry_last=",dtry_last
+              print*,"... exchanging5 "//elnam(Iindex(i))//
+     >               " for "//elnam(Iindex(j))
+            endif  
+            swap = Iindex(i)   
+            Iindex(i) = Iindex(j)
+            Iindex(j) = swap
+            e_act(Iindex(i)) = .true.
+            e_act(Iindex(j)) = .false.
+            goto 210
+          endif
           write(*,*) "*** couldn't resolve the conversion matrix."
           stop
         endif   
@@ -1271,7 +1338,8 @@
           if (is_dust(j)) then
             dk = Dindex(j)
             if (ddust(dk)+del<0.Q0) 
-     >        print*,"dk,laston,it,lastit=",dk,laston,it,lastit
+     >        print'("dk,laston,it,lastit=",2(A20),2(i4))',
+     >             trim(dust_nam(dk)),trim(dust_nam(laston)),it,lastit
             if (del<0.Q0.and.ddust(dk)>0.1*dscale(dk)) then
               fac2 = (-ddust(dk)+0.05*dscale(dk))/del   ! ddust+fac*del = 0.05*dscale
               if (fac2<1.0.and.verbose>0) print*,"*** limiting dust 1 "
