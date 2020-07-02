@@ -1,24 +1,57 @@
-***********************************************************************
-      PROGRAM EQ_CHEMISTRY
-***********************************************************************
+*****************************************************************
+      PROGRAM MAIN
+*****************************************************************
+      implicit none
+      end
+
+*****************************************************************
+      SUBROUTINE EQ_CHEMISTRY(Temp, Pres, sr_abunds, 
+     > sr_Mpl, sr_Rpl, ParamFile,
+     > sr_mol_species, sr_dust_species, len_abunds,
+     > out_elnam, out_eldens,  
+     > out_dustnam,out_dust_mfrac, 
+     > out_cmol, out_mol_mfrac,
+     > out_ngas, out_nel, out_ndust, out_nmols)
+***********************************************************************      
       use PARAMETERS,ONLY: model_dim,model_struc,model_eqcond,
      >                     useDatabase,auto_atmos,adapt_cond
+      use CHEMISTRY,ONLY: NMOLE,cmol
+      use DUST_DATA,ONLY: NELEM,NDUST,elnam,eps0,
+     >                    dust_nam,dust_mass,dust_Vol
       use EXCHANGE,ONLY: chemcall,chemiter,ieqcond,ieqconditer,
      >                   itransform,preEst,preUse,preIter,
-     >                   DUALcorr,HCOcorr
+     >                   DUALcorr,HCOcorr,nat,nion,nmol
       use DATABASE,ONLY: NLAST
       implicit none
-
-      call READ_PARAMETER
-      call INIT
-      call INIT_CHEMISTRY
-      call INIT_DUSTCHEM
-      
+      integer,parameter :: qp=selected_real_kind(33, 4931)
+      integer :: len_abunds
+      real*8, intent(in), dimension(len_abunds) :: sr_abunds          
+Cf2py integer intent(hide),depend(sr_abunds) :: len_abunds=shape(sr_abunds,0)      
+      real*8, intent(in) :: Temp, Pres
+      real*8, intent(in) :: sr_Mpl,sr_Rpl
+      integer :: i,counter,elcount,dustcount,molcount
+      character*2, intent(out) :: out_elnam(41)
+      real(kind=8), intent(out) :: out_eldens(41)
+      real(kind=8), intent(out):: out_dust_mfrac(500)
+      real(kind=8), intent(out) :: out_mol_mfrac(10000) 
+      character*20, intent(out):: out_dustnam(500) 
+      character*20, intent(out) :: out_cmol(1000)
+      character(len=200), intent(in) :: ParamFile
+      character(len=10000), intent(in) :: sr_dust_species
+      character(len=10000), intent(in) :: sr_mol_species
+      integer, intent(out) :: out_ngas, out_nel, out_ndust, out_nmols
+      print*,sr_mol_species
+      call READ_PARAMETER(Temp, Pres, sr_Mpl, sr_Rpl, ParamFile)
+      call INIT(sr_abunds,len_abunds)
+      call INIT_CHEMISTRY(sr_mol_species)
+      call INIT_DUSTCHEM(sr_dust_species)    
       if (model_dim==0) then
         if (adapt_cond) then
-          call ADAPT_CONDENSATES
+          call ADAPT_CONDENSATES(out_eldens,out_dust_mfrac,
+     > out_mol_mfrac)
         else
-          call DEMO_CHEMISTRY
+          call DEMO_CHEMISTRY(out_eldens,out_dust_mfrac,
+     > out_mol_mfrac)
         endif  
       else if (model_dim==1) then  
         if (auto_atmos) then
@@ -34,8 +67,32 @@
         print*,'*** model_dim=',model_dim,' ???'
         stop
       endif   
-      
-      print*
+      out_nel = NELEM
+      out_ndust = NDUST
+      out_nmols = NMOLE
+      do elcount=1,NELEM
+        out_elnam(elcount) = elnam(elcount)
+!        out_nat(elcount) = real(nat(elcount),8)
+      enddo
+      do dustcount=1,NDUST
+        out_dustnam(dustcount) = dust_nam(dustcount)
+!        out_dust(dustcount) = out_eldust(dustcount)/out_dustmass(dustcount)*nHges/rhod mfrac
+      enddo
+      do molcount=1,NMOLE
+!        out_nmol(molcount) = real(nmol(molcount)/ngas,8)
+        out_cmol(molcount) = cmol(molcount)
+      enddo
+!      out_nion = nion
+      counter = 0
+      print'(" --- Outputs to python --- ")'
+      print*,len_abunds,NELEM,NDUST,NMOLE
+!      do counter=1,10
+!        print*,out_elnam(counter),out_eps(counter)
+!        print*,out_dustnam(counter),out_eldust(counter)
+!        print*,out_cmol(counter),out_nmol(counter)
+!        print*
+!      enddo
+!      print*
       print'("            smchem calls = ",I8)',chemcall
       print'("         iterations/call = ",0pF8.2)',
      >                     REAL(chemiter)/REAL(chemcall)
@@ -58,18 +115,18 @@
 
       end
 
-
 ***********************************************************************
-      SUBROUTINE DEMO_CHEMISTRY
+      SUBROUTINE DEMO_CHEMISTRY(out_eldens, out_dust_mfrac, 
+     > out_mol_mfrac)
 ***********************************************************************
       use PARAMETERS,ONLY: nHmax,Tmax,pmax,model_pconst,model_eqcond,
      >                     verbose 
       use CHEMISTRY,ONLY: NMOLE,NELM,m_kind,m_anz,elnum,cmol,el
-      use DUST_DATA,ONLY: NELEM,NDUST,elnam,eps0,bk,bar,amu,
-     >                    muH,mass,mel,
+      use DUST_DATA,ONLY: NELEM,NDUST,elnam,eps0,bk,bar,
+     >                    amu, muH,mass,mel,
      >                    dust_nam,dust_mass,dust_Vol,
      >                    dust_nel,dust_el,dust_nu
-      use EXCHANGE,ONLY: nel,nat,nion,nmol,mmol,H,C,N,O,Si
+      use EXCHANGE,ONLY: nel,nat,nion,nmol,mmol,C,N,O,Si
       implicit none
       integer,parameter  :: qp = selected_real_kind ( 33, 4931 )
       real(kind=qp) :: eps(NELEM),Sat(NDUST),eldust(NDUST)
@@ -85,7 +142,10 @@
       logical :: rausI(NELEM),rausII(NELEM)
       character(len=10) :: sp
       character(len=20) :: limcond
-
+      integer :: elcount,dustcount
+      real(kind=8), intent(out) :: out_eldens(NELEM)
+      real(kind=8), intent(out) :: out_dust_mfrac(NDUST)
+      real(kind=8), intent(out) :: out_mol_mfrac(NMOLE)
 
       !deps = eps0(Si)*0.1*(1.0-108./200.)
       !eps0(Si) = eps0(Si) + deps
@@ -296,8 +356,8 @@
           threshold = 1.Q-3*nel
         else   
           write(*,'("    Element ",A2,1pE15.3)') elnam(i),eps0(i)*nHges 
-          threshold = eps(i)*nHges*1.D-5
-          if (nat(i).gt.threshold) then
+          threshold = eps(i)*nHges*1.D-2
+          if (nat(i).gt.eps(i)*nHges*1.D-2) then
             write(*,'(1x,A18,1pE10.3)') "n"//trim(elnam(i)), nat(i) 
           endif  
         endif  
@@ -360,10 +420,6 @@
         if (Sat(i)<1.Q-2) cycle 
         write(*,5000) dust_nam(i),Sat(i) 
       enddo
-      write(*,'(" epsH=",2(1pE12.4))') eps0(H),eps(H)
-      write(*,'(" epsC=",2(1pE12.4))') eps0(C),eps(C)
-      write(*,'(" epsN=",2(1pE12.4))') eps0(N),eps(N)
-      write(*,'(" epsO=",2(1pE12.4))') eps0(O),eps(O)
 
 *     -----------------------------------------------------
 *     ***  Calculation of the condenstation timescales  ***
@@ -443,7 +499,27 @@
       write(*,'("Limiting condensate ",A22,"  timescale/yr = ",
      >          1pE11.3)') limcond, tchemtot/yr
       endif
-      
+
+      !--- find atom/molecule which contains most ---
+      !--- of the key element                     ---
+      do imol=1,NMOLE
+        included = .false. 
+        molm = 0.0
+        do j=1,m_kind(0,imol)
+          if (m_kind(j,imol)==el) cycle      ! avoid free electrons
+          e = elnum(m_kind(j,imol))
+          stoich = m_anz(j,imol)  
+          molm = molm + m_anz(j,imol)*mass(e)
+        enddo  
+        out_mol_mfrac(imol) = real(nmol(imol)*molm/mu/ngas,kind=8)
+      enddo
+      do elcount=1,NELEM
+        out_eldens(elcount) = real(eps(elcount)*nHges,kind=8)
+      enddo
+      do dustcount=1,NDUST
+        out_dust_mfrac(dustcount) = real(eldust(dustcount)*
+     > dust_mass(dustcount)*nHges/rhod,kind=8)
+      enddo
  1000 format(a6,1pE9.3)
  1010 format(a6,1pE9.3,a8,1pE9.3)
  1020 format(a22,1pE15.9,2(0pF10.5))

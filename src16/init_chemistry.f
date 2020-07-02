@@ -1,5 +1,5 @@
 ************************************************************************
-      subroutine INIT_CHEMISTRY
+      subroutine INIT_CHEMISTRY(sr_species)
 ************************************************************************
       use PARAMETERS,ONLY: elements,initchem_info
       use CHEMISTRY,ONLY: NMOLdim,NMOLE,NELM,catm,cmol,el,
@@ -18,6 +18,7 @@
       character(len=1) :: char
       logical :: found,charged
       real*8 :: fiterr
+      character(len=10000), intent(in) :: sr_species
 
       cel(:) = '.'
       read(elements,*,end=100) cel
@@ -104,6 +105,13 @@
           read(12,'(A300)') line
           read(line,*) molname,iel,cel(1:iel),m_anz(1:iel,i)
           molname=trim(molname)
+          if (Len_Trim(sr_species) > 0) then
+!            print*,trim(molname),index(sr_species,trim(molname)//' ')
+            if (index(sr_species,trim(molname)//' ')==0) then
+              read(12,'(A300)') line
+              cycle
+            endif
+          endif
           fiterr = 0.0
           j = index(line,"+/-")
           if (j>0) read(line(j+3:),*) fiterr

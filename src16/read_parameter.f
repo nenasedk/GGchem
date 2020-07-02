@@ -1,19 +1,24 @@
 ************************************************************************
-      subroutine READ_PARAMETER
-************************************************************************
+      subroutine READ_PARAMETER(Temp, Pres, sr_Mpl, sr_Rpl, ParamFile) 
+************************************************************************     
       use PARAMETERS,ONLY: elements,abund_pick,model_dim,model_pconst,
      >     model_struc,model_eqcond,Npoints,useDatabase,verbose,
      >     Tfast,Tmin,Tmax,pmin,pmax,nHmin,nHmax,pick_mfrac,
      >     abund_file,struc_file,remove_condensates,phyllosilicates,
      >     initchem_info,auto_atmos,stop_after_init,Mpl,Rpl,gamma,
-     >     adapt_cond 
+     >     adapt_cond
       use CHEMISTRY,ONLY: NewBackIt,NewFullIt,NewBackFac,NewPreMethod,
      >                    NewFastLevel,Natmax,dispol_file
       use DUST_DATA,ONLY: DustChem_file,bar,MEarth,REarth
       implicit none
-      integer :: iarg,iline,i,dispol_set
-      character(len=200) :: ParamFile,line
-
+      real*8, intent(in) :: Temp, Pres
+      real*8, intent(in) :: sr_Mpl, sr_Rpl
+      character(len=200), intent(in) :: ParamFile
+      character(len=200) :: line
+      integer :: i, iline, dispol_set
+      !integer :: iarg,iline,i,dispol_set
+      !character(len=200) :: ParamFile,line
+      
       !-------------------------
       ! ***  default values  ***
       !-------------------------
@@ -22,48 +27,47 @@
       dispol_file(3) = 'dispol_WoitkeRefit.dat'
       dispol_file(4) = ''
       DustChem_file  = 'DustChem.dat'
-      elements       = 'H He C N O Na Mg Si Fe Al Ca Ti S Cl K Li el'
-      pick_mfrac         = .false.
-      model_eqcond       = .false.
-      remove_condensates = .false.
-      phyllosilicates    = .true.
-      auto_atmos         = .false.
-      adapt_cond         = .false.
-      stop_after_init    = .false.
-      model_pconst       = .true.
-      initchem_info      = .true.
-      abund_pick   = 3
-      model_dim    = 1
+      elements       = 'H He C N O Na Mg Si Fe Al Ca Ti S Cl K
+     >Li F P V Cr Mn Ni Zr W el'
+      pick_mfrac   = .false.
+      model_eqcond = .true.
+      remove_condensates = .true.
+      phyllosilicates = .true.
+      auto_atmos   = .false.
+      adapt_cond   = .false.
+      stop_after_init = .false.
+      model_pconst = .true.
+      initchem_info= .true.
+      model_dim    = 0
       model_struc  = 0
+      abund_pick   = 0
+      !abund_pick   = sr_abund_pick
+
       verbose      = 0
       Npoints      = 100
-      Tfast        = 1000.d0
-      Tmin         = 100.d0
-      Tmax         = 6000.d0
-      pmin         = 1.d0*bar
-      pmax         = 1.d0*bar
-      nHmin        = 4.d+19
-      nHmax        = 4.d+19
-      Mpl          = MEarth
-      Rpl          = REarth
-      gamma        = 7.0/5.0
-      UseDataBase  = .true.
+      Tfast        = 1000
+      Tmin         = Temp
+      Tmax         = Temp
+      pmin         = Pres
+      pmax         = Pres
+      nHmin        = 4.E+19
+      nHmax        = 4.E+19
+      Mpl          = sr_Mpl
+      Rpl          = sr_Mpl
+      gamma        = 7./5.
+      UseDatabase  = .true.
       NewFullIt    = .true.
       NewBackIt    = 5
       NewBackFac   = 1.E+2
       NewFastLevel = 1
       NewPreMethod = 3
       Natmax       = 16
-
-      !-------------------------------------------
-      ! ***  change parameters via input file  ***
-      !-------------------------------------------
-      iarg = iargc()
-      if (iarg==0) then
+      if (Len_Trim(ParamFile) == 0) then
         print*,"using default parameters"
         return
-      endif  
-      call getarg(1,ParamFile)
+      endif
+
+      ! Read in from file
       open(unit=1,file=ParamFile,status='old')
       iline = 0
       dispol_set = 0
@@ -173,3 +177,4 @@
       if (dispol_set>0.and.dispol_set<3) dispol_file(3)=""
       if (dispol_set>0.and.dispol_set<2) dispol_file(2)=""
       end
+

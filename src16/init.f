@@ -1,5 +1,5 @@
 **********************************************************************
-      SUBROUTINE INIT
+      SUBROUTINE INIT(abunds,len_abunds)
 **********************************************************************
 *****                                                            *****
 *****   Initialisiert Elementhaeufigkeiten                       *****
@@ -17,8 +17,10 @@
      >                   Ar,K,Ca,Sc,Ti,V,Cr,Mn,Fe,Co,Ni,Cu,Zn,Ga,Ge,
      >                   As,Se,Br,Kr,Rb,Sr,Y,Zr,W
       implicit none
+      integer, intent(in) :: len_abunds
       integer,parameter :: qp=selected_real_kind(33,4931)
-      integer :: i,j,nr
+      real*8, intent(in) :: abunds(len_abunds)
+      integer :: i,j,nr, ind, count
       real(kind=qp) :: abund(74,4),eps0(NELEM),epsH,mfrac(NELEM)
       real(kind=qp) :: m,val,addH2O
       character(len=2) :: el
@@ -220,82 +222,44 @@
       eps0 = eps
   
 *     ------------------------------------
-*     ***  read abundances from file?  ***      
+*     ***  abundances from args  ***      
 *     ------------------------------------
-      if (abund_pick.eq.0) then
-        write(*,*)
-        write(*,*) "read element abundances from "//
-     &             trim(abund_file)//" ..."
-        open(1,file=abund_file,status='old')
-        eps   = -40.0
-        mfrac = 1.Q-50
-        do i=1,999
-          read(1,*,err=1000,end=1000) el,val
-          print*,el,val
-          if (el=='el') cycle
-          found = .false.
-          do j=1,NELEM
-            if (el==elnam(j)) then
-              eps(j) = val
-              mfrac(j) = val
-              found = .true.
-              !print*,el,elnam(j),j
-              exit
-            endif  
-          enddo  
-          if (.not.found) then
-            write(*,*) "*** element "//el//" not found." 
-            stop
-          endif  
-        enddo  
- 1000   close(1)
-        if (pick_mfrac) then
-          call mf2eps(mfrac,eps)
-          do i=1,NELEM
-            if (mfrac(i)==1.Q-50) cycle
-            write(*,'(A2,": ",1pE10.3," ->",2(1pE10.3))') 
-     &           elnam(i),eps0(i),eps(i),mfrac(i)
-          enddo
-        else   
-          epsH = eps(H)
-          do i=1,NELEM
-            eps(i) = 10.Q0 ** (eps(i)-epsH)
-            if (initchem_info) then
-              write(*,'(A2,": ",1pE10.3," ->",1pE10.3)') 
-     &             elnam(i),eps0(i),eps(i)
-            endif
-          enddo        
-          call eps2mf(eps,mfrac)
+      eps   = -40.0
+      mfrac = 1.Q-50
+      ind = 0 
+      count = 1
+      do j=1,NELEM
+        if (trim(elnam(j))=='el') cycle
+        ind = index(elements," "//trim(elnam(j)))
+        if (ind>0) then
+          eps(j) = REAL(abunds(count),kind=qp)
+          mfrac(j) = REAL(abunds(count),kind=qp)
+          found = .true.
+          print*,elnam(j),j,abunds(count),count
+          count = count + 1
         endif
+      enddo   
+      if (pick_mfrac) then
+        call mf2eps(mfrac,eps)
+        do i=1,NELEM
+          if (mfrac(i)==1.Q-50) cycle
+          write(*,'(A2,": ",1pE10.3," ->",2(1pE10.3))') 
+     &           elnam(i),eps0(i),eps(i),mfrac(i)
+        enddo
+      else   
+        epsH = eps(H)
+        do i=1,NELEM
+          eps(i) = 10.Q0 ** (eps(i)-epsH)
+          if (initchem_info) then
+            write(*,'(A2,": ",1pE10.3," ->",1pE10.3)') 
+     &            elnam(i),eps0(i),eps(i)
+          endif
+        enddo        
+        call eps2mf(eps,mfrac)
         !addH2O = 0.9*eps(Si)
         !eps(H) = eps(H)+2*addH2O
         !eps(O) = eps(O)+1*addH2O
-      else if (abund_pick.ne.3) then
-        source = (/'EarthCrust','Ocean     ','Solar     ','Meteorites'/)
-        write(*,*)
-        write(*,*) "replacing from file Abundances.dat ("
-     &             //trim(source(abund_pick))//") ..."
-        open(1,file='data/Abundances.dat',status='old')
-        do i=1,5
-          read(1,'(A200)') line
-        enddo  
-        do i=1,72
-          read(1,*) nr,elname,el,m,abund(nr,1:4)
-          if (nr<=40) then
-            mass(nr)  = m*amu
-            elnam(nr) = el
-            eps(nr)   = MAX(1.e-99,abund(nr,abund_pick)
-     &                            /abund(1,abund_pick))
-          else if (trim(el)=='W') then
-            mass(W)  = m*amu
-            elnam(W) = el
-            eps(W)   = MAX(1.e-99,abund(nr,abund_pick)
-     &                           /abund(1,abund_pick))
-          endif  
-        enddo  
-        close(1)
-      endif  
-
+      endif
       call eps2mf(eps,mfrac)
       muH = 0.d0
       write(*,'(7x,A8,A8,A12,A13,A12)')

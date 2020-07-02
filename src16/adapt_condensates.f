@@ -1,5 +1,6 @@
 ***********************************************************************
-      SUBROUTINE ADAPT_CONDENSATES
+      SUBROUTINE ADAPT_CONDENSATES(out_eldens, out_dust_mfrac, 
+     > out_mol_mfrac)
 ***********************************************************************
       use PARAMETERS,ONLY: nHmax,Tmax,pmax,model_pconst,model_eqcond,
      >                     verbose 
@@ -28,8 +29,13 @@
       character(len=2) :: elread
       character(len=10) :: sp
       character(len=20) :: limcond,fname
+      integer :: elcount,dustcount
+      real(kind=8), intent(out) :: out_eldens(NELEM)
+      real(kind=8), intent(out) :: out_dust_mfrac(NDUST)
+      real(kind=8), intent(out) :: out_mol_mfrac(NMOLE)
 
       epsgas = 0.Q0
+      
       open(unit=1,file='abund_gas.in')
       do
         read(1,*,end=100) elread,val
@@ -483,6 +489,26 @@
      >          1pE11.3)') limcond, tchemtot/yr
       endif
       
+      !--- find atom/molecule which contains most ---
+      !--- of the key element                     ---
+      do imol=1,NMOLE
+        included = .false. 
+        molm = 0.0
+        do j=1,m_kind(0,imol)
+          if (m_kind(j,imol)==el) cycle      ! avoid free electrons
+          e = elnum(m_kind(j,imol))
+          stoich = m_anz(j,imol)
+          molm = molm + m_anz(j,imol)*mass(e)
+        enddo  
+        out_mol_mfrac(imol) = real(nmol(imol)*molm/mu/ngas,kind=8)
+      enddo
+      do elcount=1,NELEM
+        out_eldens(elcount) = real(eps(elcount)*nHges,kind=8)
+      enddo
+      do dustcount=1,NDUST
+        out_dust_mfrac(dustcount) = real(eldust(dustcount)*
+     >  dust_mass(dustcount)*nHges/rhod,kind=8)
+      enddo
  1000 format(a6,1pE9.3)
  1010 format(a6,1pE9.3,a8,1pE9.3)
  1020 format(a22,1pE15.9,2(0pF10.5))

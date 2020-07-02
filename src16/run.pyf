@@ -1,0 +1,45 @@
+!    -*- f90 -*-
+! Note: the context of this file is case sensitive.
+
+python module run ! in 
+    interface  ! in :run
+        subroutine eq_chemistry(temp,pres,sr_abunds,sr_mpl,sr_rpl,paramfile,sr_mol_species,sr_dust_species,len_abunds,out_elnam,out_eldens,out_dustnam,out_dust_mfrac,out_cmol,out_mol_mfrac,out_ngas,out_nel,out_ndust,out_nmols) ! in :run:run.f
+            use parameters, only: model_dim,model_struc,model_eqcond,usedatabase,auto_atmos,adapt_cond
+            use chemistry, only: nmole,cmol
+            use dust_data, only: nelem,ndust,elnam,eps0,dust_nam,dust_mass,dust_vol
+            use exchange, only: chemcall,chemiter,ieqcond,ieqconditer,itransform,preest,preuse,preiter,dualcorr,hcocorr,nat,nion,nmol
+            use database, only: nlast
+            real*8 intent(in) :: temp
+            real*8 intent(in) :: pres
+            real*8 dimension(len_abunds),intent(in) :: sr_abunds
+            real*8 intent(in) :: sr_mpl
+            real*8 intent(in) :: sr_rpl
+            character*200 intent(in) :: paramfile
+            character*10000 intent(in) :: sr_mol_species
+            character*10000 intent(in) :: sr_dust_species
+            integer, optional,intent(hide),depend(sr_abunds) :: len_abunds=shape(sr_abunds,0)
+            character dimension(41,2),intent(out,c) :: out_elnam
+            real(kind=8) dimension(41),intent(out) :: out_eldens
+            character dimension(500,20),intent(out,c) :: out_dustnam
+            real(kind=8) dimension(500),intent(out) :: out_dust_mfrac
+            character dimension(1000,20),intent(out,c) :: out_cmol
+            real(kind=8) dimension(10000),intent(out) :: out_mol_mfrac
+            integer intent(out) :: out_ngas
+            integer intent(out) :: out_nel
+            integer intent(out) :: out_ndust
+            integer intent(out) :: out_nmols
+        end subroutine eq_chemistry
+        subroutine demo_chemistry(out_eldens,out_dust_mfrac,out_mol_mfrac) ! in :run:run.f
+            use parameters, only: nhmax,tmax,pmax,model_pconst,model_eqcond,verbose
+            use chemistry, only: nmole,nelm,m_kind,m_anz,elnum,cmol,el
+            use dust_data, only: nelem,ndust,elnam,eps0,bk,bar,amu,muh,mass,mel,dust_nam,dust_mass,dust_vol,dust_nel,dust_el,dust_nu
+            use exchange, only: nel,nat,nion,nmol,mmol,c,n,o,si
+            real(kind=8) dimension((nelem)),intent(out) :: out_eldens
+            real(kind=8) dimension((ndust)),intent(out) :: out_dust_mfrac
+            real(kind=8) dimension((nmole)),intent(out) :: out_mol_mfrac
+        end subroutine demo_chemistry
+    end interface 
+end python module run
+
+! This file was auto-generated with f2py (version:2).
+! See http://cens.ioc.ee/projects/f2py2e/

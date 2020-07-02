@@ -1,5 +1,5 @@
 **********************************************************************
-      SUBROUTINE INIT_DUSTCHEM
+      SUBROUTINE INIT_DUSTCHEM(sr_species)
 **********************************************************************
       use PARAMETERS,ONLY: model_eqcond,phyllosilicates
       use CHEMISTRY,ONLY: NMOLE,NELM,catm
@@ -15,10 +15,11 @@
       real*8 :: dmass,prec(NDUSTmax)
       character(len=10000) :: allcond
       character(len=200):: zeile,lastzeile
+      character(len=20) :: spec
       character(len=100) :: trivial(NDUSTmax),tmp
       character(len=2)  :: name
       logical :: found,allfound,hasH,hasSi,hasAl,hasCa
-
+      character(len=10000), intent(in) :: sr_species
       write(*,*) 
       write(*,*) "reading "//trim(DustChem_file)//" ..."
       write(*,*) "========================"
@@ -35,7 +36,17 @@
       NDUST = 1
       do i=1,imax
         read(12,1000) zeile
-        read(zeile,*) dust_nam(NDUST)
+        read(zeile,*) spec
+        if (Len_Trim(sr_species) > 0) then
+          if (index(sr_species,trim(spec))==0) then            
+            do 
+              read(12,1000) zeile
+              if (trim(zeile)=='') exit
+            enddo
+           cycle
+          endif
+        endif
+        dust_nam(NDUST) = spec
         j1 = index(zeile,' ')
         read(zeile(j1+1:),*) trivial(NDUST)
         if (index(zeile,'[l]')>0) then
